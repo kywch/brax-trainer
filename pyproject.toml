@@ -9,11 +9,6 @@ dependencies = [
     "gym==0.23"
 ]
 
-
-[build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
-
 [system-requirements]
 cuda = "12.1"
 

@@ -287,7 +287,7 @@ packages:
   name: brax-trainer
   version: 0.1.0
   path: .
-  sha256: 63c41616f04e56dbd5521675155407dd6032ae0a4c149fb52ea0b329e1652e58
+  sha256: 7d1fb1e04d555d059d58a50fbcbb608cde54ab3c6a7466e208d1c9933ff08a66
   requires_dist:
   - brax
   - jax[cuda12]
