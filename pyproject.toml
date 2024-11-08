@@ -6,7 +6,9 @@ version = "0.1.0"
 dependencies = [
     "brax",
     "jax[cuda12]",
-    "gym==0.23"
+    "gym==0.23",
+    "pufferlib@git+https://github.com/kywch/PufferLib.git",
+    "carbs@git+https://github.com/PufferAI/carbs.git",
 ]
 
 [system-requirements]
@@ -22,6 +24,8 @@ brax_trainer = { path = ".", editable = true }
 [tool.pixi.dependencies]
 pre-commit = ">=4.0.1,<5"
 ruff = ">=0.7.2,<0.8"
+cython = ">=3.0.11,<4"
+setuptools = ">=75.3.0,<76"
 
 pytorch = "*"
 pytorch-cuda = "12.1"
@@ -29,7 +33,7 @@ pytorch-cuda = "12.1"
 [tool.pixi.tasks]
 test_torch = "python -c 'import torch; print(torch.cuda.is_available())'"
 test_jax = "python -c 'import jax; print(jax.devices())'"
-
+build = "python setup.py build_ext --inplace"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
