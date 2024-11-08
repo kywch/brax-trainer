@@ -1,3 +1,6 @@
+[build-system]
+requires = ["Cython>=3.0", "pip>=23.0", "setuptools>=61.0", "wheel", "numpy==1.23.3"]
+
 [project]
 description = "Pufferlib trainer for Brax"
 name = "brax-trainer"
