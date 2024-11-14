@@ -6,6 +6,7 @@ import random
 import psutil
 import time
 
+import pyximport
 from threading import Thread
 from collections import defaultdict, deque
 
@@ -25,7 +26,8 @@ import pufferlib.utils
 import pufferlib.pytorch
 
 # Fast Cython GAE implementation
-from brax_trainer.c_gae import compute_gae
+pyximport.install(setup_args={"include_dirs": np.get_include()})
+from brax_trainer.c_gae import compute_gae  # noqa
 
 torch.set_float32_matmul_precision("high")
 
