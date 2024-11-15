@@ -103,7 +103,7 @@ class BraxPufferWrapper(PufferEnv):
 
         # Replace numpy buffers with torch
         # NOTE: observations, rewards, terminals, truncations are from jax with zero copy, so don't need to keep buffers
-        self.masks = torch.zeros(self.num_agents, dtype=torch.bool, device=self.device)
+        # self.masks = torch.zeros(self.num_agents, dtype=torch.bool, device=self.device)
 
         # reward-related
         self.reward_scaling = reward_scaling
@@ -150,7 +150,7 @@ class BraxPufferWrapper(PufferEnv):
         # Check done episodes
         # self.masks[:] = ~(self.terminals | self.truncations)
         torch.logical_or(self.terminals, self.truncations, out=self.done_envs)
-        torch.logical_not(self.done_envs, out=self.masks)
+        self.masks[:] = torch.logical_not(self.done_envs).cpu().numpy()
 
         # CHECK ME: where to put reward shaping?
 
