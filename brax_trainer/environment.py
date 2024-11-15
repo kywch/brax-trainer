@@ -2,12 +2,14 @@ from collections import deque
 import warnings
 
 import jax
+import torch
 import numpy as np
 from gymnasium import spaces
 
 import brax.envs
 from brax.envs.base import PipelineEnv
 from brax.io import image
+from brax.io.torch import jax_to_torch
 
 from pufferlib.environment import PufferEnv
 
@@ -99,13 +101,18 @@ class BraxPufferWrapper(PufferEnv):
         # PufferEnv API check
         super().__init__(buf)
 
+        # Replace numpy buffers with torch
+        # NOTE: observations, rewards, terminals, truncations are from jax with zero copy, so don't need to keep buffers
+        self.masks = torch.zeros(self.num_agents, dtype=torch.bool, device=self.device)
+
         # reward-related
         self.reward_scaling = reward_scaling
-        self.cumulative_reward = np.zeros(self.num_agents, dtype=np.float32)
+        self.cumulative_reward = torch.zeros(
+            self.num_agents, dtype=torch.float32, device=self.device
+        )
 
         # buffer for episode stats
-        self.done_envs = np.ones(self.num_agents, dtype=bool)
-        self.info_steps = np.zeros(self.num_agents, dtype=np.int32)
+        self.done_envs = torch.ones(self.num_agents, dtype=torch.bool, device=self.device)
         self.finished_episodes = 0
         # NOTE: keeping the last num_envs episode. Revisit this later
         self.episode_returns = deque(maxlen=self.num_agents)
@@ -118,7 +125,7 @@ class BraxPufferWrapper(PufferEnv):
 
         self._state, obs, self._key = self._reset(self._key)
 
-        self.observations[:] = jax.device_get(obs)
+        self.observations = jax_to_torch(obs, device=self.device)
 
         # Reset the buffers
         self.masks[:] = True
@@ -134,28 +141,29 @@ class BraxPufferWrapper(PufferEnv):
     def step(self, action):
         self._state, obs, reward, done, info = self._step(self._state, action)
 
-        self.observations[:] = jax.device_get(obs)
-        self.rewards[:] = jax.device_get(reward)
-        self.terminals[:] = jax.device_get(done)
-        self.truncations[:] = jax.device_get(info["truncation"])
-        self.info_steps[:] = jax.device_get(info["steps"])
+        self.observations = jax_to_torch(obs, device=self.device)
+        self.rewards = jax_to_torch(reward, device=self.device)
+        self.terminals = jax_to_torch(done, device=self.device)
+        self.truncations = jax_to_torch(info["truncation"], device=self.device)
+        info_steps = jax_to_torch(info["steps"], device=self.device)
 
         # Check done episodes
         # self.masks[:] = ~(self.terminals | self.truncations)
-        np.logical_or(self.terminals, self.truncations, out=self.done_envs)
-        np.logical_not(self.done_envs, out=self.masks)
+        torch.logical_or(self.terminals, self.truncations, out=self.done_envs)
+        torch.logical_not(self.done_envs, out=self.masks)
 
         # CHECK ME: where to put reward shaping?
 
         # Process rewards
         self.cumulative_reward += self.rewards
-        np.multiply(self.rewards, self.reward_scaling, out=self.rewards)
+        self.rewards *= self.reward_scaling
 
         # Process finished episodes
-        if self.done_envs.sum() > 0:
-            self.finished_episodes += self.done_envs.sum()
-            self.episode_lengths.extend(self.info_steps[self.done_envs])
-            self.episode_returns.extend(self.cumulative_reward[self.done_envs])
+        done_envs = self.done_envs.sum().cpu().item()
+        if done_envs > 0:
+            self.finished_episodes += done_envs
+            self.episode_lengths.extend(info_steps[self.done_envs].cpu().tolist())
+            self.episode_returns.extend(self.cumulative_reward[self.done_envs].cpu().tolist())
             self.cumulative_reward[self.done_envs] = 0
 
         new_info = {}  # "finished_episodes": self.finished_episodes}

@@ -142,8 +142,8 @@ def evaluate(data):
             o_device = o.to(config.device)
             r = torch.as_tensor(r)
 
-            d = np.logical_or(d, t)  # NOTE: match to cleanrl
-            d = torch.as_tensor(d)
+            torch.logical_or(d, t, out=d)  # NOTE: match to cleanrl
+            # d = torch.as_tensor(d)
 
         with profile.eval_forward, torch.no_grad():
             # TODO: In place-update should be faster. Leaking 7% speed max
