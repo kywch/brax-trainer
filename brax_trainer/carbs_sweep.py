@@ -118,6 +118,9 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
                 train_suggestion[key] = 2 ** round(train_suggestion[key])
         train_suggestion["update_epochs"] = round(train_suggestion["update_epochs"])
 
+        # Adjust the eval timesteps based on the num_envs
+        train_suggestion["eval_timesteps"] = train_suggestion["num_envs"] * 1024
+
         # CARBS minibatch_size is actually the number of minibatches
         train_suggestion["num_minibatches"] = 2 ** round(train_suggestion["num_minibatches"])
         train_suggestion["minibatch_size"] = (
