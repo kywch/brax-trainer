@@ -31,6 +31,8 @@ from brax_trainer.c_gae import compute_gae  # noqa
 
 torch.set_float32_matmul_precision("high")
 
+WANDB_LOG_INTERVAL = 5  # seconds
+
 
 def create(config, vecenv, policy, optimizer=None, wandb=None, skip_dash=False):
     seed_everything(config.seed, config.torch_deterministic)
@@ -333,7 +335,9 @@ def train(data):
             if (
                 data.wandb is not None
                 and data.global_step > 0
-                and (time.time() - data.last_log_time > 20)  # or "episode_return" in data.stats)
+                and (
+                    time.time() - data.last_log_time > WANDB_LOG_INTERVAL
+                )  # or "episode_return" in data.stats)
             ):
                 data.last_log_time = time.time()
                 data.wandb.log(

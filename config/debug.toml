@@ -44,7 +44,7 @@ compile = true
 compile_mode = "reduce-overhead"
 
 total_timesteps = 3_000_000
-eval_timesteps = 1_000_000
+eval_timesteps = 1_100_000
 
 
 ### Sweep related parameters
@@ -63,12 +63,12 @@ name = "environment/episode_return"
 
 # NOTE: These are differently handled by CARBS
 # If the sampled params are out of range, the wandb sweep crashes
-total_timesteps = { min = 1_000_000, max = 300_000_000 }
+total_timesteps = { min = 1_000_000, max = 100_000_000 }
 batch_size = { min = 1, max = 2_000_000 }
 num_minibatches = { min = 1, max = 10000 }
 # minibatch_size = { min = 1, max = 2_000_000 }
 bptt_horizon = { min = 1, max = 32 }
-# num_envs = { min = 1024, max = 8192 }
+num_envs = { min = 256, max = 8192 }
 
 # These' scales are good for CARBS
 learning_rate = { min = 1e-5, max = 1e-1 }
@@ -85,7 +85,7 @@ ent_coef = { min = 1e-4, max = 0.05 }
 # Special cases, the scale of which are different from above
 # NOTE: The actual values of batch_size, num_minibatches, bptt_horizon are 2**suggested
 # These parameters need to be processed before used in training
-total_timesteps = { min = 1_000_000, max = 300_000_000, space = "log", search_center = 10_000_000, is_integer = true }
+total_timesteps = { min = 1_000_000, max = 100_000_000, space = "log", search_center = 5_000_000, is_integer = true }
 batch_size = { min = 14, max = 20, space = "linear", search_center = 16 }
 num_minibatches = { min = 1, max = 10, space = "linear", search_center = 4 }
 # minibatch_size = { min = 1, max = 10, space = "linear", search_center = 4 }
@@ -93,7 +93,7 @@ bptt_horizon = { min = 1, max = 5, space = "linear", search_center = 3 }
 
 # TODO: make num_envs sweep work. It does not work now.
 # Use 2^suggested, thus 1024, 2048, 4096, 8192
-# num_envs = { min = 8, max = 13, space = "linear", search_center = 10 }
+num_envs = { min = 8, max = 14, space = "linear", search_center = 10 }
 
 # Others: append min/max from wandb param to carbs param
 learning_rate = { space = "log", search_center = 2e-3 }

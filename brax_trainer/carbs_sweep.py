@@ -1,6 +1,5 @@
 import json
 import time
-import numpy as np
 
 from carbs import LinearSpace
 from carbs import LogSpace
@@ -58,8 +57,14 @@ def init_carbs(args, resample_frequency=5, num_random_samples=2, max_suggestion_
         for name in wandb_sweep_params[group]["parameters"]:
             assert name in carbs_config, f"Invalid name {name} in {group}"
 
-            # Handle special cases: total timesteps, batch size, num_minibatch
-            if name in ["total_timesteps", "batch_size", "num_minibatches", "bptt_horizon"]:
+            # Handle special cases: total timesteps, batch size, num_minibatch, num_envs
+            if name in [
+                "total_timesteps",
+                "batch_size",
+                "num_minibatches",
+                "bptt_horizon",
+                "num_envs",
+            ]:
                 assert (
                     "min" in carbs_config[name]
                 ), f"Special param {name} must have min in carbs config"
@@ -150,17 +155,14 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
         If a failure occurs that is not related to the hyperparameters, it is better to forget 
         the suggestion or retry it. Report a failure by making an ObservationInParam with is_failure=True
         """
-        observed_value = [s[target_metric] for s in stats if target_metric in s]
-        if len(observed_value) > 0:
-            observed_value = np.mean(observed_value)
-        else:
-            observed_value = 0
+        # Take the last stats, as the gpu env returns the avg of the last num_envs episodes each epoch
+        output = stats[-1][target_metric] if stats else 0
 
-        print(f"\n\nTrain success: {is_success}, Observed value: {observed_value}\n\n")
+        print(f"\n\nTrain success: {is_success}, Time: {uptime:.0f} s, Output: {output:.0f}\n\n")
         obs_out = carbs.observe(  # noqa
             ObservationInParam(
                 input=orig_suggestion,
-                output=observed_value,
+                output=output,
                 cost=uptime,
                 is_failure=not is_success,
             )
@@ -168,7 +170,7 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
 
         # Save CARBS suggestions and results
         with open(carbs_file, "a") as f:
-            train_suggestion.update({"output": observed_value, "cost": uptime})
+            train_suggestion.update({"output": output, "cost": uptime})
             results_txt = json.dumps(str(train_suggestion))
             f.write(results_txt + "\n")
             f.flush()
