@@ -127,7 +127,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/6a/21/5b6702a7f963e95456c0de2d495f67bf5fd62840ac655dc451586d23d39a/attrs-24.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bb/2a/10164ed1f31196a2f7f3799368a821765c62851ead0e630ab52b8e14b4d0/blinker-1.8.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/11/de/134be9686bdc31943f9fd30de10ff32a0a2c2c2d995fd89f97c954525a1f/brax-0.11.0-py3-none-any.whl
-      - pypi: git+https://github.com/PufferAI/carbs.git@5786f68b73db002c5b4bb14206195a21823cf45d
+      - pypi: git+https://github.com/kywch/carbs.git@6d3dd6ddf5159c61cd7f9f58ab1b415035803113
       - pypi: https://files.pythonhosted.org/packages/c8/d5/867e75361fc45f6de75fe277dd085627a9db5ebb511a87f27dc1396b5351/cattrs-24.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/03/5f/3b0fd7ea23aa13a61430256234cf43895c29d6d0bbe7e98b68c6eaebbd48/chex-0.1.7-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/48/41/e1d85ca3cab0b674e277c8c4f678cf66a91cd2cecf93df94353a606fe0db/cloudpickle-3.1.0-py3-none-any.whl
@@ -406,13 +406,13 @@ packages:
   name: brax-trainer
   version: 0.1.0
   path: .
-  sha256: 8aa42b0978d8c3001bdfd40019e1457c1543738c1227d9ef9c04a4d6a02c94c6
+  sha256: 17d69390158c72262b242fd26504b6ee651cc5fac23ae2fd227b80cd18ade277
   requires_dist:
   - brax
   - jax[cuda12]
   - gym==0.23
   - pufferlib @ git+https://github.com/kywch/PufferLib.git
-  - carbs @ git+https://github.com/PufferAI/carbs.git
+  - carbs @ git+https://github.com/kywch/carbs.git
   requires_python: '>=3.11,<3.12'
   editable: true
 - kind: conda
@@ -470,7 +470,7 @@ packages:
 - kind: pypi
   name: carbs
   version: 0.1.0
-  url: git+https://github.com/PufferAI/carbs.git@5786f68b73db002c5b4bb14206195a21823cf45d
+  url: git+https://github.com/kywch/carbs.git@6d3dd6ddf5159c61cd7f9f58ab1b415035803113
   requires_dist:
   - attrs
   - cattrs
@@ -481,7 +481,7 @@ packages:
   - seaborn
   - torch
   - wandb
-  requires_python: '>=3.11'
+  requires_python: '>=3.10'
 - kind: pypi
   name: cattrs
   version: 24.1.2

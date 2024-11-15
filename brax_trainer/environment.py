@@ -16,18 +16,21 @@ BRAX_ENVS = list(brax.envs._envs.keys())
 # CHECK ME: PufferEnv already implements vecenv API
 def make_vecenv(env_name, args_dict, **env_kwargs) -> PufferEnv:
     assert env_name in BRAX_ENVS, f"Invalid env_name: {env_name}"
+    assert "train" in args_dict, "args_dict must contain train config"
+
+    train_config = args_dict["train"]
 
     brax_kwargs = {
         "env_name": env_name,
-        "batch_size": args_dict["train"]["num_envs"],
+        "batch_size": train_config["num_envs"],
         "backend": "spring",
     }
 
-    env_kwargs = args_dict["env"]
+    env_kwargs = args_dict["env"] if "env" in args_dict else {}
     env_kwargs.update(
         {
-            "seed": args_dict["train"]["seed"],
-            "device": args_dict["train"]["device"],
+            "seed": train_config["seed"] if "seed" in train_config else 1,
+            "device": train_config["device"] if "device" in train_config else "cuda",
         }
     )
 
@@ -151,11 +154,14 @@ class BraxPufferWrapper(PufferEnv):
             self.episode_returns.extend(self.cumulative_reward[self.done_envs])
             self.cumulative_reward[self.done_envs] = 0
 
-        new_info = {
-            "finished_episodes": self.finished_episodes,
-            "episode_returns": np.mean(self.episode_returns),
-            "episode_lengths": np.mean(self.episode_lengths),
-        }
+        new_info = {}  # "finished_episodes": self.finished_episodes}
+        if len(self.episode_returns) > 0:
+            new_info.update(
+                {
+                    "episode_return": np.mean(self.episode_returns),
+                    "episode_length": np.mean(self.episode_lengths),
+                }
+            )
 
         # TODO: info has a lot of info, including reward-related. Report back some of them.
 

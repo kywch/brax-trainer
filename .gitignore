@@ -1,6 +1,9 @@
 # Artifacts
-experiments/
-
+experiments
+checkpoints
+wandb
+*.txt
+*.profile
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -9,6 +12,7 @@ __pycache__/
 
 # C extensions
 *.so
+*.c
 
 # Distribution / packaging
 .Python

@@ -11,7 +11,7 @@ dependencies = [
     "jax[cuda12]",
     "gym==0.23",
     "pufferlib@git+https://github.com/kywch/PufferLib.git",
-    "carbs@git+https://github.com/PufferAI/carbs.git",
+    "carbs@git+https://github.com/kywch/carbs.git",
 ]
 
 [system-requirements]
@@ -38,6 +38,7 @@ pytorch-cuda = "12.1"
 test_torch = "python -c 'import torch; print(torch.cuda.is_available())'"
 test_jax = "python -c 'import jax; print(jax.devices())'"
 build = "python setup.py build_ext --inplace"
+train = "python -m brax_trainer.train"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

@@ -108,7 +108,7 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
 
         # Correcting critical parameters before updating
         # train_suggestion["total_timesteps"] = int(train_suggestion["total_timesteps"] * 10**6)
-        for key in ["batch_size", "bptt_horizon"]:
+        for key in ["batch_size", "bptt_horizon", "num_envs"]:
             if key in train_suggestion:
                 train_suggestion[key] = 2 ** round(train_suggestion[key])
         train_suggestion["update_epochs"] = round(train_suggestion["update_epochs"])
@@ -169,7 +169,7 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
         # Save CARBS suggestions and results
         with open(carbs_file, "a") as f:
             train_suggestion.update({"output": observed_value, "cost": uptime})
-            results_txt = json.dumps(train_suggestion)
+            results_txt = json.dumps(str(train_suggestion))
             f.write(results_txt + "\n")
             f.flush()
 

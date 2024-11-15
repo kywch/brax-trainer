@@ -29,21 +29,22 @@ max_grad_norm = 0.5
 ent_coef = 0.01
 # target_kl = None  # Assign a value when needed.
 
-num_envs = 2048
+num_envs = 1024
+# NOTE: gpu-based envs do not use these
 # num_workers = 1
 # env_batch_size = 1
 # zero_copy = false
 data_dir = "experiments"
 checkpoint_interval = 1000
-batch_size = 32768
-minibatch_size = 1024
+batch_size = 65536
+minibatch_size = 8192
 bptt_horizon = 8
 
 compile = true
 compile_mode = "reduce-overhead"
 
-total_timesteps = 30_000_000
-eval_timesteps = 1_000
+total_timesteps = 3_000_000
+eval_timesteps = 1_000_000
 
 
 ### Sweep related parameters
@@ -59,15 +60,15 @@ goal = "maximize"
 name = "environment/episode_return"
 
 [sweep.parameters.train.parameters]
-# num_envs = { min = 16, max = 64 }
 
 # NOTE: These are differently handled by CARBS
 # If the sampled params are out of range, the wandb sweep crashes
-total_timesteps = { min = 1_000_000, max = 100_000_000 }
+total_timesteps = { min = 1_000_000, max = 300_000_000 }
 batch_size = { min = 1, max = 2_000_000 }
 num_minibatches = { min = 1, max = 10000 }
 # minibatch_size = { min = 1, max = 2_000_000 }
 bptt_horizon = { min = 1, max = 32 }
+# num_envs = { min = 1024, max = 8192 }
 
 # These' scales are good for CARBS
 learning_rate = { min = 1e-5, max = 1e-1 }
@@ -80,18 +81,19 @@ vf_clip_coef = { min = 0.0, max = 1.0 }
 ent_coef = { min = 1e-4, max = 0.05 }
 # max_grad_norm = { min = 0.0, max = 10.0 }
 
-# [sweep.parameters.env.parameters]
-# simp_norm_reward_bias = { min = -10.0, max = 20.0 }
-
 [carbs]
 # Special cases, the scale of which are different from above
 # NOTE: The actual values of batch_size, num_minibatches, bptt_horizon are 2**suggested
 # These parameters need to be processed before used in training
-total_timesteps = { min = 1_000_000, max = 10_000_000, space = "log", search_center = 1_000_000, is_integer = true }
-batch_size = { min = 13, max = 20, space = "linear", search_center = 15 }
+total_timesteps = { min = 1_000_000, max = 300_000_000, space = "log", search_center = 10_000_000, is_integer = true }
+batch_size = { min = 14, max = 20, space = "linear", search_center = 16 }
 num_minibatches = { min = 1, max = 10, space = "linear", search_center = 4 }
 # minibatch_size = { min = 1, max = 10, space = "linear", search_center = 4 }
 bptt_horizon = { min = 1, max = 5, space = "linear", search_center = 3 }
+
+# TODO: make num_envs sweep work. It does not work now.
+# Use 2^suggested, thus 1024, 2048, 4096, 8192
+# num_envs = { min = 8, max = 13, space = "linear", search_center = 10 }
 
 # Others: append min/max from wandb param to carbs param
 learning_rate = { space = "log", search_center = 2e-3 }
@@ -102,6 +104,3 @@ clip_coef = { space = "logit", search_center = 0.5 }
 vf_coef = { space = "linear", search_center = 1.0 }
 vf_clip_coef = { space = "logit", search_center = 0.5 }
 ent_coef = { space = "log", search_center = 0.002 }
-# max_grad_norm = { space = "linear", search_center = 0.5 }
-
-# simp_norm_reward_bias = { space = "linear", search_center = 0.0 }

@@ -117,6 +117,7 @@ def parse_args(config="config/debug.toml"):
 
 
 def train(args, vecenv_creator, policy_cls, rnn_cls, wandb=None, skip_dash=False):
+    # TODO: use puffer.vector.make
     vecenv = vecenv_creator()
 
     # env compile & warm up
