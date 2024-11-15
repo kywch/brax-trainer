@@ -1,4 +1,5 @@
 from collections import deque
+import warnings
 
 import jax
 import numpy as np
@@ -11,6 +12,9 @@ from brax.io import image
 from pufferlib.environment import PufferEnv
 
 BRAX_ENVS = list(brax.envs._envs.keys())
+
+# Related to jax.jit on _reset() and _step()
+warnings.filterwarnings("ignore", message="backend and device argument on jit is deprecated")
 
 
 # CHECK ME: PufferEnv already implements vecenv API
