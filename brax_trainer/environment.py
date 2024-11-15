@@ -2,14 +2,16 @@ from collections import deque
 import warnings
 
 import jax
+from jax import dlpack as jax_dlpack
 import torch
+from torch.utils import dlpack as torch_dlpack
+
 import numpy as np
 from gymnasium import spaces
 
 import brax.envs
 from brax.envs.base import PipelineEnv
 from brax.io import image
-from brax.io.torch import jax_to_torch
 
 from pufferlib.environment import PufferEnv
 
@@ -45,6 +47,13 @@ def make_vecenv(env_name, args_dict, **env_kwargs) -> PufferEnv:
     env = brax.envs.create(**brax_kwargs)
     env = BraxPufferWrapper(env, **env_kwargs)
     return env
+
+
+# NOTE: brax.io.torch import jax_to_torch() is slow for dispatch calls, etc
+def jax_to_torch(jax_array, device):
+    """Converts a jax.Array into PyTorch Tensor with zero copy."""
+    dpack = jax_dlpack.to_dlpack(jax_array)
+    return torch_dlpack.from_dlpack(dpack)
 
 
 class BraxPufferWrapper(PufferEnv):
