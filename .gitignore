@@ -1,6 +1,6 @@
 # Artifacts
-experiments
-checkpoints
+experiments*
+*checkpoints
 wandb
 *.txt
 *.profile

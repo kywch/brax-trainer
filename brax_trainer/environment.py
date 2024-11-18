@@ -17,28 +17,19 @@ BRAX_ENVS = list(brax.envs._envs.keys())
 warnings.filterwarnings("ignore", message="backend and device argument on jit is deprecated")
 
 
+def check_brax_kwargs(brax_kwargs):
+    assert "env_name" in brax_kwargs, "brax_kwargs must contain env_name"
+    assert brax_kwargs["env_name"] in BRAX_ENVS, f"Invalid env_name: {brax_kwargs['env_name']}"
+    assert "batch_size" in brax_kwargs, "brax_kwargs must contain num_envs"
+    assert brax_kwargs["batch_size"] > 0, "num_envs must be positive"
+
+
 # CHECK ME: PufferEnv already implements vecenv API
-def make_vecenv(env_name, args_dict, **env_kwargs) -> PufferEnv:
-    assert env_name in BRAX_ENVS, f"Invalid env_name: {env_name}"
-    assert "train" in args_dict, "args_dict must contain train config"
+def make_vecenv(brax_kwargs, env_kwargs) -> PufferEnv:
+    check_brax_kwargs(brax_kwargs)
+    brax_kwargs["backend"] = "spring"
 
-    train_config = args_dict["train"]
-
-    brax_kwargs = {
-        "env_name": env_name,
-        "batch_size": train_config["num_envs"],
-        "backend": "spring",
-    }
-
-    env_kwargs = args_dict["env"] if "env" in args_dict else {}
-    env_kwargs.update(
-        {
-            "seed": train_config["seed"] if "seed" in train_config else 1,
-            "device": train_config["device"] if "device" in train_config else "cuda",
-        }
-    )
-
-    # TODO: make brax envs deterministic when torch_deterministic is True
+    # CHECK ME: are brax envs deterministic? Then handle torch_deterministic is True
 
     env = brax.envs.create(**brax_kwargs)
     env = BraxPufferWrapper(env, **env_kwargs)
@@ -61,7 +52,7 @@ class BraxPufferWrapper(PufferEnv):
     ):
         self._env = env
         self.metadata = {
-            "render.modes": ["human", "rgb_array"],
+            "render.modes": ["rgb_array"],
             "video.frames_per_second": 1 / self._env.dt,
         }
         if not hasattr(self._env, "batch_size"):
@@ -132,6 +123,8 @@ class BraxPufferWrapper(PufferEnv):
         return self.observations, [{}]
 
     def step(self, action):
+        # CHECK ME: action clipping?
+
         self._state, obs, reward, done, info = self._step(self._state, action)
 
         self.observations[:] = jax.device_get(obs)
@@ -153,23 +146,22 @@ class BraxPufferWrapper(PufferEnv):
 
         # Process finished episodes
         if self.done_envs.sum() > 0:
-            self.finished_episodes += self.done_envs.sum()
-            self.episode_lengths.extend(self.info_steps[self.done_envs])
-            self.episode_returns.extend(self.cumulative_reward[self.done_envs])
+            # self.finished_episodes += self.done_envs.sum()
+            # self.episode_lengths.extend(self.info_steps[self.done_envs])
+            # self.episode_returns.extend(self.cumulative_reward[self.done_envs])
+            new_info = [
+                {"episode_return": float(ret), "episode_length": int(length)}
+                for ret, length in zip(
+                    self.cumulative_reward[self.done_envs], self.info_steps[self.done_envs]
+                )
+            ]
             self.cumulative_reward[self.done_envs] = 0
-
-        new_info = {}  # "finished_episodes": self.finished_episodes}
-        if len(self.episode_returns) > 0:
-            new_info.update(
-                {
-                    "episode_return": np.mean(self.episode_returns),
-                    "episode_length": np.mean(self.episode_lengths),
-                }
-            )
+        else:
+            new_info = []
 
         # TODO: info has a lot of info, including reward-related. Report back some of them.
 
-        return self.observations, self.rewards, self.terminals, self.truncations, [new_info]
+        return self.observations, self.rewards, self.terminals, self.truncations, new_info
 
     def close(self):
         # NOTE: Brax envs don't require explicit cleanup
@@ -178,11 +170,11 @@ class BraxPufferWrapper(PufferEnv):
     def seed(self, seed: int = 0):
         self._key = jax.random.PRNGKey(seed)
 
-    def render(self, mode="human"):
+    def render(self, mode="rgb_array"):
         if mode == "rgb_array":
             sys, state = self._env.sys, self._state
             if state is None:
                 raise RuntimeError("must call reset or step before rendering")
-            return image.render_array(sys, state.pipeline_state.take(0), 256, 256)
+            return image.render_array(sys, state.pipeline_state, camera="track")
         else:
-            return super().render(mode=mode)  # just raise an exception
+            raise NotImplementedError(f"Render mode {mode} not implemented")

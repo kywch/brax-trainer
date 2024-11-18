@@ -1,24 +1,19 @@
 # from pdb import set_trace as T
-import numpy as np
-
 import os
+import time
 import random
 import psutil
-import time
 
 import pyximport
 from threading import Thread
 from collections import defaultdict, deque
-
-# from moviepy.editor import ImageSequenceClip
-from PIL import Image, ImageDraw
-from tqdm import tqdm
 
 import rich
 from rich.console import Console
 from rich.table import Table
 
 import torch
+import numpy as np
 # from tensordict.nn import CudaGraphModule
 
 import pufferlib
@@ -34,7 +29,7 @@ torch.set_float32_matmul_precision("high")
 WANDB_LOG_INTERVAL = 5  # seconds
 
 
-def create(config, vecenv, policy, optimizer=None, wandb=None, skip_dash=False):
+def create(config, vecenv, policy, session_spec, optimizer=None, wandb=None, skip_dash=False):
     seed_everything(config.seed, config.torch_deterministic)
     profile = Profile()
     losses = make_losses()
@@ -101,6 +96,7 @@ def create(config, vecenv, policy, optimizer=None, wandb=None, skip_dash=False):
 
     return pufferlib.namespace(
         config=config,
+        session_spec=session_spec,
         vecenv=vecenv,
         policy_forward=policy_forward,
         uncompiled_policy=uncompiled_policy,
@@ -125,7 +121,6 @@ def evaluate(data):
 
     with profile.eval_misc:
         policy_forward = data.policy_forward
-        # Freeze the Norm layers
         data.uncompiled_policy.eval()
         infos = defaultdict(list)
         lstm_h, lstm_c = experience.lstm_h, experience.lstm_c
@@ -611,13 +606,19 @@ def save_checkpoint(data):
     if not os.path.exists(path):
         os.makedirs(path)
 
+    # Save the policy
     model_name = f"model_{data.epoch:06d}.pt"
     model_path = os.path.join(path, model_name)
     if os.path.exists(model_path):
+        # Already saved the same weights
         return model_path
 
-    torch.save(data.uncompiled_policy, model_path)
+    checkpoint = data.session_spec
+    checkpoint["state_dict"] = data.uncompiled_policy.state_dict()
+    torch.save(checkpoint, model_path)
 
+    # Save the trainer state
+    # NOTE: brax is fast, so we less likely to resume training from a checkpoint
     state = {
         "optimizer_state_dict": data.optimizer.state_dict(),
         "global_step": data.global_step,
@@ -629,6 +630,7 @@ def save_checkpoint(data):
     state_path = os.path.join(path, "trainer_state.pt")
     torch.save(state, state_path + ".tmp")
     os.rename(state_path + ".tmp", state_path)
+
     return model_path
 
 
@@ -649,98 +651,6 @@ def try_load_checkpoint(data):
 
 def count_params(policy):
     return sum(p.numel() for p in policy.parameters() if p.requires_grad)
-
-
-# Functions for video generation
-def add_text_to_image(image, text, position, color=(255, 255, 255)):
-    """Add text to an image using PIL."""
-    draw = ImageDraw.Draw(image)
-    draw.text(position, text, fill=color)
-    return image
-
-
-def create_video(frames, output_path, fps=30):
-    raise NotImplementedError("Video generation not implemented")
-    # clip = ImageSequenceClip(list(frames), fps=fps)
-    # clip.write_videofile(output_path, codec="libx264")
-
-
-def rollout(
-    env_creator,
-    env_kwargs,
-    policy_cls,
-    rnn_cls,
-    agent_creator,
-    agent_kwargs,
-    model_path=None,
-    device="cuda",
-    horizon=2000,
-):
-    # We are just using Serial vecenv to give a consistent
-    # single-agent/multi-agent API for evaluation
-    env = pufferlib.vector.make(env_creator, env_kwargs=env_kwargs)
-
-    assert model_path is not None, "model_path must be provided for rollout"
-    agent = torch.load(model_path, map_location=device)
-    agent.eval()
-
-    ob, _ = env.reset(seed=int(time.time()))
-    obs_list = [ob.squeeze()]
-    driver = env.driver_env.env
-    state = None
-
-    tick = 0
-    episode = 1
-    ep_reward = 0
-    frames = []
-    reward_hist = deque(maxlen=100)
-    for tick in tqdm(range(horizon)):
-        with torch.no_grad():
-            ob = torch.from_numpy(ob).to(device).view(1, -1)
-            if hasattr(agent, "lstm"):
-                action, _, _, _, state = agent(ob, state)
-            else:
-                action, _, _, _ = agent(ob)
-
-            action = action.cpu().numpy().reshape(env.action_space.shape)
-
-        ob, reward, done, truncated, infos = driver.step(action[0])
-        obs_list.append(ob)
-
-        ep_reward += infos["raw_reward"]
-
-        rgb_array = driver.render()
-
-        # Add episode, reward and tick to the image
-        image = Image.fromarray(rgb_array)
-        image = add_text_to_image(
-            image, f"Tick {tick}/{horizon}\nEpisode: {episode}, Reward: {ep_reward:.4f}", (10, 10)
-        )
-        frames.append(np.array(image))
-
-        # print(f"Reward: {reward:.4f}, Tick: {tick}, Done: {done}")
-        # print(f"Next action: {action[0]}")
-
-        reward_hist.append(infos["raw_reward"])
-        if tick % 100 == 0:
-            print(f"The avg of last 100 rewards: { np.mean(reward_hist) }")
-
-        if done or truncated:
-            print(f"Tick: {tick}, Episode: {episode}, Reward: {ep_reward:.4f}")
-            episode += 1
-            ep_reward = 0
-            ob, _ = driver.reset(seed=int(time.time()))
-
-    # Save the video file to the model path
-    video_name = f"{model_path.split('.pt')[0]}_video.mp4"
-    create_video(frames, video_name, fps=30)
-
-    # Get some basic stats on obs, to see if it needs some preprocessing
-    obs_mat = np.vstack(obs_list)
-    print(f"Max abs col mean: {abs(obs_mat.mean(axis=1)).max()}")
-    print(f"Max abs col std: {obs_mat.std(axis=1).max()}")
-    print(f"Min and max obs: {obs_mat.min()}, {obs_mat.max()}")
-    # Ant-v5: min/max obs = -16, 15 ... looks ok for now  or maybe /10?
 
 
 def seed_everything(seed, torch_deterministic):

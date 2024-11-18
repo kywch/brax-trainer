@@ -7,38 +7,28 @@ import time
 import ast
 import os
 
+import torch
+import numpy as np
+
 import pufferlib
 import pufferlib.utils
 import pufferlib.vector
 import pufferlib.frameworks.cleanrl
 
+from PIL import Image
+from tqdm import tqdm
 from rich.traceback import install
 
 import brax_trainer.clean_pufferl as clean_pufferl
 import brax_trainer.environment as environment
-import brax_trainer.policy as policy
-from brax_trainer.utils import init_wandb
+import brax_trainer.policy as policy_module
+from brax_trainer.utils import init_wandb, add_text_to_image, create_video
 
 # Rich tracebacks
 install(show_locals=False)
 
 # Aggressively exit on ctrl+c
 signal.signal(signal.SIGINT, lambda sig, frame: os._exit(0))
-
-
-def make_policy(env, policy_cls, rnn_cls, args):
-    policy = policy_cls(env, **args["policy"])
-    if isinstance(policy, pufferlib.frameworks.cleanrl.Policy) or isinstance(
-        policy, pufferlib.frameworks.cleanrl.RecurrentPolicy
-    ):
-        pass
-    elif rnn_cls is not None:
-        policy = rnn_cls(env, policy, **args["rnn"])
-        policy = pufferlib.frameworks.cleanrl.RecurrentPolicy(policy)
-    else:
-        policy = pufferlib.frameworks.cleanrl.Policy(policy)
-
-    return policy.to(args["train"]["device"])
 
 
 def parse_args(config="config/debug.toml"):
@@ -57,8 +47,8 @@ def parse_args(config="config/debug.toml"):
         "-m",
         "--mode",
         type=str,
-        default="train",
-        choices="train video sweep check_sps cprofile".split(),
+        default="sweep",
+        choices="train sweep eval video check_sps cprofile".split(),
     )
 
     # parser.add_argument("--eval-model-path", type=str, default=None)
@@ -66,7 +56,8 @@ def parse_args(config="config/debug.toml"):
         "-p",
         "--eval-model-path",
         type=str,
-        default=None,
+        # default=None,
+        default="experiments/ant-48a31ec9/model_000046.pt",
     )
 
     # parser.add_argument(
@@ -83,6 +74,7 @@ def parse_args(config="config/debug.toml"):
         "--repeat", type=int, default=1, help="Repeat the training with different seeds"
     )
     parser.add_argument("-d", "--device", type=str, default=None)
+    parser.add_argument("-s", "--seed", type=int, default=None)
 
     args = parser.parse_known_args()[0]
 
@@ -99,6 +91,7 @@ def parse_args(config="config/debug.toml"):
 
     # Override config with command line arguments
     parsed = parser.parse_args().__dict__
+
     args = {"env": {}, "policy": {}, "rnn": {}}
     env_name = parsed.pop("env_name")
     for key, value in parsed.items():
@@ -113,26 +106,109 @@ def parse_args(config="config/debug.toml"):
         except:  # noqa
             prev[subkey] = value
 
+    # Determine device with priority order
+    # Priority: args["device"] > args["train"]["device"] > torch.cuda.is_available()
+    device = None
+    if args.get("device") is not None:
+        device = args["device"]
+    elif args["train"].get("device") is not None:
+        device = args["train"]["device"]
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Fallback to CPU if CUDA is requested but not available
+    if device.startswith("cuda") and not torch.cuda.is_available():
+        device = "cpu"
+
+    # Update both locations with the determined device
+    args["train"]["device"] = args["device"] = device
+
     return args, env_name
 
 
-def train(args, vecenv_creator, policy_cls, rnn_cls, wandb=None, skip_dash=False):
-    # TODO: use puffer.vector.make
-    vecenv = vecenv_creator()
+def args_to_session_spec(args):
+    if args["seed"] is not None:
+        args["train"]["seed"] = args["seed"]
 
-    # env compile & warm up
+    args["env"].update(
+        {
+            "seed": args["train"]["seed"],
+            "device": args["device"],
+        }
+    )
+
+    return {
+        "seed": args["train"]["seed"],
+        "device": args["device"],
+        "env_config": {
+            "brax_kwargs": {
+                "env_name": env_name,
+                "batch_size": args["train"]["num_envs"],
+            },
+            "env_kwargs": args["env"],
+        },
+        "policy_config": {
+            "policy_cls_name": args["base"]["policy_name"],
+            "policy_kwargs": args["policy"],
+            "rnn_cls_name": args["base"].get("rnn_name", None),
+            "rnn_kwargs": args["rnn"],
+        },
+        "train_config": args["train"],
+        "state_dict": None,
+    }
+
+
+def make_env_and_policy(session_spec):
+    vecenv = pufferlib.vector.make(
+        environment.make_vecenv,
+        env_kwargs=session_spec["env_config"],
+        backend=pufferlib.vector.Native,
+    )
+
+    # Env compile & warm up
     print("Warming up the jax environment...")
     vecenv.reset()
     actions = vecenv.action_space.sample()
     vecenv.step(actions)
 
-    policy = make_policy(vecenv.driver_env, policy_cls, rnn_cls, args)
+    # Make policy
+    policy_config = session_spec["policy_config"]
+    policy_cls = getattr(policy_module, policy_config["policy_cls_name"])
+    rnn_cls = None
+    if policy_config["rnn_cls_name"] is not None:
+        rnn_cls = getattr(policy_module, policy_config["rnn_cls_name"])
+
+    policy = policy_cls(vecenv.driver_env, **policy_config["policy_kwargs"])
+    if isinstance(policy, pufferlib.frameworks.cleanrl.Policy) or isinstance(
+        policy, pufferlib.frameworks.cleanrl.RecurrentPolicy
+    ):
+        pass
+    elif rnn_cls is not None:
+        policy = rnn_cls(vecenv.driver_env, policy, **policy_config["rnn_kwargs"])
+        policy = pufferlib.frameworks.cleanrl.RecurrentPolicy(policy)
+    else:
+        policy = pufferlib.frameworks.cleanrl.Policy(policy)
+
+    if session_spec["state_dict"] is not None:
+        policy.load_state_dict(session_spec["state_dict"])
+
+    policy.to(session_spec["device"])
+
+    return vecenv, policy
+
+
+def train(args, wandb=None, skip_dash=False):
+    session_spec = args_to_session_spec(args)
+    vecenv, policy = make_env_and_policy(session_spec)
+
     train_config = pufferlib.namespace(
-        **args["train"],
+        **session_spec["train_config"],
         env=env_name,
         exp_id=args["exp_id"] or env_name + "-" + str(uuid.uuid4())[:8],
     )
-    data = clean_pufferl.create(train_config, vecenv, policy, wandb=wandb, skip_dash=skip_dash)
+    data = clean_pufferl.create(
+        train_config, vecenv, policy, session_spec, wandb=wandb, skip_dash=skip_dash
+    )
 
     try:
         while data.global_step < train_config.total_timesteps:
@@ -141,33 +217,36 @@ def train(args, vecenv_creator, policy_cls, rnn_cls, wandb=None, skip_dash=False
 
         uptime = data.profile.uptime
 
-        # TODO: If we CARBS reward param, we should have a separate venenv ready for eval
-        # Run evaluation to get the average stats
-        stats = []
-        data.vecenv.async_reset(seed=int(time.time()))
-        num_eval_epochs = train_config.eval_timesteps // train_config.batch_size
-        for _ in range(1 + num_eval_epochs):  # extra data for sweeps
-            stats.append(clean_pufferl.evaluate(data)[0])
+        returns = []
+        if "sweep" in args:
+            # TODO: If we CARBS reward param, we should have a separate venenv ready for eval
+            # Run evaluation to get the average stats
+
+            target_metric = args["sweep"]["metric"]["name"].split("/")[-1]
+            data.vecenv.reset(seed=args["seed"])
+            num_eval_epochs = train_config.eval_timesteps // train_config.batch_size
+            for _ in range(1 + num_eval_epochs):
+                _, infos = clean_pufferl.evaluate(data)
+                returns.extend(infos[target_metric])
 
     except Exception as e:  # noqa
-        uptime, stats = 0, []
+        uptime, returns = 0, []
         import traceback
 
         traceback.print_exc()
 
     clean_pufferl.close(data)
-    return stats, uptime
+    return returns, uptime
 
 
-### CARBS Sweeps
-def run_sweep(args, env_name, vecenv_creator, policy_cls, rnn_cls):
+def run_sweep(args, env_name):
     import wandb
     from brax_trainer.carbs_sweep import init_carbs, carbs_runner_fn
 
-    if not os.path.exists("carbs_checkpoints"):
-        os.system("mkdir carbs_checkpoints")
+    # if not os.path.exists("carbs_checkpoints"):
+    #     os.system("mkdir carbs_checkpoints")
 
-    carbs = init_carbs(args, num_random_samples=20)
+    carbs = init_carbs(args, num_random_samples=10)
 
     sweep_id = wandb.sweep(
         sweep=args["sweep"],
@@ -175,7 +254,7 @@ def run_sweep(args, env_name, vecenv_creator, policy_cls, rnn_cls):
     )
 
     def train_fn(args, wandb):
-        return train(args, vecenv_creator, policy_cls, rnn_cls, wandb=wandb, skip_dash=True)
+        return train(args, wandb=wandb, skip_dash=True)
 
     # Run sweep
     wandb.agent(
@@ -185,20 +264,152 @@ def run_sweep(args, env_name, vecenv_creator, policy_cls, rnn_cls):
     )
 
 
+def evaluate(args, num_envs=2048, rollout_steps=1001):
+    # Load the pre-trained model
+    model_path = args["eval_model_path"]
+    assert model_path is not None, "model_path must be provided for record_video"
+
+    session_spec = torch.load(model_path)
+    assert session_spec["state_dict"] is not None, "model_path must contain a state_dict"
+
+    # Update the current device
+    session_spec["device"] = args["device"]
+
+    # Make the single env for the video
+    session_spec["env_config"]["brax_kwargs"]["batch_size"] = num_envs
+
+    vecenv, policy = make_env_and_policy(session_spec)
+    policy.eval()
+
+    # Update the eval_timesteps based on the num_envs and rollout_steps
+    session_spec["train_config"]["eval_timesteps"] = num_envs * rollout_steps
+    train_config = pufferlib.namespace(
+        **session_spec["train_config"],
+        env=env_name,
+        exp_id=args["exp_id"] or env_name + "-" + str(uuid.uuid4())[:8],
+    )
+    data = clean_pufferl.create(train_config, vecenv, policy, session_spec, skip_dash=True)
+
+    returns = []
+    lengths = []
+    data.vecenv.reset(seed=args["seed"])
+    num_eval_epochs = train_config.eval_timesteps // train_config.batch_size
+    for _ in range(1 + num_eval_epochs):
+        _, infos = clean_pufferl.evaluate(data)
+        returns.extend(infos["episode_return"])
+        lengths.extend(infos["episode_length"])
+
+    print(f"\n\nEvaluation results with {num_envs} envs * {rollout_steps} steps")
+    print(f"Episode count: {len(returns)}")
+    print(f"Episode lengths: {np.mean(lengths):.2f}")
+    print(f"Episode returns: {np.mean(returns):.2f}")
+
+    clean_pufferl.close(data)
+
+
+def record_video(args, rollout_steps=2000):
+    # Load the pre-trained model
+    model_path = args["eval_model_path"]
+    assert model_path is not None, "model_path must be provided for record_video"
+
+    session_spec = torch.load(model_path)
+    assert session_spec["state_dict"] is not None, "model_path must contain a state_dict"
+
+    # Update the current device
+    session_spec["device"] = args["device"]
+
+    # Make the single env for the video
+    session_spec["env_config"]["brax_kwargs"]["batch_size"] = 1
+
+    env, policy = make_env_and_policy(session_spec)
+    policy.eval()
+
+    # Rollout
+    frames = []
+    episode = 1
+    ep_reward = 0
+
+    obs, _ = env.reset(seed=args["seed"])
+    obs_list = [obs.squeeze()]
+    state = None
+
+    for tick in tqdm(range(rollout_steps)):
+        with torch.no_grad():
+            obs = torch.from_numpy(obs).to(args["device"]).view(1, -1)
+            if hasattr(policy, "lstm"):
+                action, _, _, _, state = policy(obs, state)
+            else:
+                action, _, _, _ = policy(obs)
+
+            action = action.cpu().numpy().reshape(env.action_space.shape)
+
+        obs, reward, done, truncated, infos = env.step(action)
+        obs_list.append(obs)
+
+        rgb_array = env.render()
+
+        if done or truncated:
+            print(f"Tick: {tick}, Episode: {episode}, Reward: {ep_reward:.4f}")
+            episode += 1
+            # Reset is handled by the env
+        else:
+            ep_reward = env.cumulative_reward[0]
+
+        # Add episode, reward and tick to the image
+        image = Image.fromarray(rgb_array)
+        image = add_text_to_image(
+            image,
+            f"Tick {tick+1}/{rollout_steps}\nEpisode: {episode}, Reward: {ep_reward:.4f}",
+            (10, 10),
+        )
+        frames.append(np.array(image))
+
+        # print(f"Reward: {reward:.4f}, Tick: {tick}, Done: {done}")
+        # print(f"Next action: {action[0]}")
+
+    # Save the video file to the model path
+    video_name = f"{model_path.split('.pt')[0]}_video.mp4"
+    create_video(frames, video_name, fps=30)
+
+    # Get some basic stats on obs, to see if it needs some preprocessing
+    obs_mat = np.vstack(obs_list)
+    print(f"Max abs col mean: {abs(obs_mat.mean(axis=1)).max()}")
+    print(f"Max abs col std: {obs_mat.std(axis=1).max()}")
+    print(f"Min and max obs: {obs_mat.min()}, {obs_mat.max()}")
+
+
+def profile_env_sps(env_config, timeout=10):
+    vecenv = pufferlib.vector.make(
+        environment.make_vecenv,
+        env_kwargs=env_config,
+        backend=pufferlib.vector.Native,
+    )
+
+    actions = [vecenv.action_space.sample() for _ in range(1000)]
+
+    # warmup
+    vecenv.reset()
+    vecenv.step(actions[0])
+
+    agent_steps = 0
+    vecenv.async_reset()
+
+    # profile
+    start = time.time()
+    while time.time() - start < timeout:
+        vecenv.send(actions[agent_steps % 1000])
+        o, r, d, t, i, env_id, mask = vecenv.recv()
+        agent_steps += sum(mask)
+
+    sps = agent_steps / (time.time() - start)
+    vecenv.close()
+
+    print(f"num_envs: {env_config['brax_kwargs']['batch_size']}, SPS: {sps:.1f}")
+    return sps
+
+
 if __name__ == "__main__":
     args, env_name = parse_args()
-
-    if args["device"] is not None:
-        args["train"]["device"] = args["device"]
-
-    # Load env binding and policy
-    def vecenv_creator():
-        return environment.make_vecenv(env_name, args)
-
-    policy_cls = getattr(policy, args["base"]["policy_name"])
-    rnn_cls = None
-    if "rnn_name" in args["base"]:
-        rnn_cls = getattr(policy, args["base"]["rnn_name"])
 
     # Process mode
     if args["mode"] == "train":
@@ -216,42 +427,34 @@ if __name__ == "__main__":
             if args["track"]:
                 run_name = f"pufferl_{env_name}_{args['train']['seed']}_{int(time.time())}"
                 wandb = init_wandb(args, run_name)
-            train(args, vecenv_creator, policy_cls, rnn_cls, wandb=wandb)
-
-    # elif args["mode"] == "video":
-    #     # Single env
-    #     args["train"]["num_envs"] = 1
-    #     args["train"]["num_workers"] = 1
-    #     args["train"]["env_batch_size"] = 1
-
-    #     clean_pufferl.rollout(
-    #         env_creator[0],
-    #         args["env"],
-    #         policy_cls=policy_cls,
-    #         rnn_cls=rnn_cls,
-    #         agent_creator=make_policy,
-    #         agent_kwargs=args,
-    #         model_path=args["eval_model_path"],
-    #         device=args["train"]["device"],
-    #     )
+            train(args, wandb=wandb)
 
     elif args["mode"] == "sweep":
-        run_sweep(args, env_name, vecenv_creator, policy_cls, rnn_cls)
+        run_sweep(args, env_name)
+
+    elif args["mode"] == "eval":
+        evaluate(args)
+
+    elif args["mode"] == "video":
+        assert args["eval_model_path"] is not None, "model_path must be provided for video"
+        record_video(args)
 
     elif args["mode"] == "check_sps":
-        from brax_trainer.utils import profile_env_sps
-
+        session_spec = args_to_session_spec(args)
+        env_config = session_spec["env_config"]
         for num_envs in [1, 8, 64, 256, 1024, 2048, 4096, 8192, 16384]:
             try:
-                profile_env_sps(env_name, args_dict={"train": {"num_envs": num_envs}})
+                env_config["brax_kwargs"]["batch_size"] = num_envs
+                profile_env_sps(env_config)
             except Exception as e:
                 print(f"Running {num_envs} {env_name} envs failed: {e}")
 
     elif args["mode"] == "cprofile":
         import cProfile
 
-        args["train"]["total_timesteps"] = 1_000_000
-        cProfile.run("train(args, vecenv_creator, policy_cls, rnn_cls)", "stats.profile")
+        session_spec = args_to_session_spec(args)
+        session_spec["train_config"]["total_timesteps"] = 1_000_000
+        cProfile.run("train(session_spec)", "stats.profile")
         import pstats
         from pstats import SortKey
 

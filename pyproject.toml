@@ -12,6 +12,7 @@ dependencies = [
     "gym==0.23",
     "pufferlib@git+https://github.com/kywch/PufferLib.git",
     "carbs@git+https://github.com/kywch/carbs.git",
+    "moviepy",
 ]
 
 [system-requirements]

@@ -1,13 +1,17 @@
 import time
+import torch
 
 from brax_trainer.environment import make_vecenv
-from brax_trainer.utils import profile_env_sps
 
 
 def test_puffer_env():
-    test_kwargs = {"env_name": "ant", "args_dict": {"train": {"num_envs": 1}}}
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    env_config = {
+        "brax_kwargs": {"env_name": "ant", "batch_size": 1},
+        "env_kwargs": {"seed": 1, "device": device},
+    }
 
-    vecenv = make_vecenv(**test_kwargs)
+    vecenv = make_vecenv(**env_config)
 
     # Sync API
     vecenv.reset(seed=int(time.time()))
@@ -27,7 +31,3 @@ def test_puffer_env():
 
 if __name__ == "__main__":
     test_puffer_env()
-
-    env_name = "ant"
-    for num_envs in [1, 8, 64, 256, 1024, 2048, 4096, 8192]:
-        profile_env_sps(env_name, args_dict={"train": {"num_envs": num_envs}})

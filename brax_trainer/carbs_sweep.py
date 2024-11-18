@@ -1,6 +1,8 @@
 import json
 import time
 
+import numpy as np
+
 from carbs import LinearSpace
 from carbs import LogSpace
 from carbs import LogitSpace
@@ -89,7 +91,6 @@ def init_carbs(args, resample_frequency=5, num_random_samples=2, max_suggestion_
 
 
 def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=False, debug=False):
-    target_metric = args["sweep"]["metric"]["name"].split("/")[-1]
     carbs_file = "carbs_" + sweep_id + ".txt"
 
     def run_sweep_session():
@@ -141,11 +142,10 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
         print("\nEnv config:", wandb.config.env, "\n")
         # print(wandb.config.policy)
 
-        stats, uptime, is_success = {}, 0, False
+        outputs, uptime, is_success = {}, 0, False
         try:
-            # stats, uptime = train(args, make_env, policy_cls, rnn_cls, wandb, skip_dash=True)
-            stats, uptime = train_fn(args, wandb)
-            is_success = len(stats) > 0
+            outputs, uptime = train_fn(args, wandb)
+            is_success = len(outputs) > 0
         except Exception as e:  # noqa
             import traceback
 
@@ -158,8 +158,7 @@ def carbs_runner_fn(args, env_name, carbs, sweep_id, train_fn, disable_wandb=Fal
         If a failure occurs that is not related to the hyperparameters, it is better to forget 
         the suggestion or retry it. Report a failure by making an ObservationInParam with is_failure=True
         """
-        # Take the last stats, as the gpu env returns the avg of the last num_envs episodes each epoch
-        output = stats[-1][target_metric] if stats else 0
+        output = np.mean(outputs) if outputs else 0
 
         print(f"\n\nTrain success: {is_success}, Time: {uptime:.0f} s, Output: {output:.0f}\n\n")
         obs_out = carbs.observe(  # noqa

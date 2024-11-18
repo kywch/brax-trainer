@@ -1,8 +1,5 @@
-import time
-
-from brax_trainer.environment import make_vecenv
-
-DEFAULT_TIMEOUT = 10
+from PIL import ImageDraw
+from moviepy.editor import ImageSequenceClip
 
 
 def init_wandb(args_dict, run_name, id=None, resume=True, disable=False):
@@ -25,28 +22,14 @@ def init_wandb(args_dict, run_name, id=None, resume=True, disable=False):
     return wandb
 
 
-def profile_env_sps(env_name, args_dict, timeout=DEFAULT_TIMEOUT):
-    vecenv = make_vecenv(env_name, args_dict)
-    num_envs = args_dict["train"]["num_envs"]
+# Functions for video generation
+def add_text_to_image(image, text, position, color=(255, 255, 255)):
+    """Add text to an image using PIL."""
+    draw = ImageDraw.Draw(image)
+    draw.text(position, text, fill=color)
+    return image
 
-    actions = [vecenv.action_space.sample() for _ in range(1000)]
 
-    # warmup
-    vecenv.reset()
-    vecenv.step(actions[0])
-
-    agent_steps = 0
-    vecenv.async_reset()
-
-    # profile
-    start = time.time()
-    while time.time() - start < timeout:
-        vecenv.send(actions[agent_steps % 1000])
-        o, r, d, t, i, env_id, mask = vecenv.recv()
-        agent_steps += sum(mask)
-
-    sps = agent_steps / (time.time() - start)
-    vecenv.close()
-
-    print(f"num_envs: {num_envs}, SPS: {sps:.1f}")
-    return sps
+def create_video(frames, output_path, fps=30):
+    clip = ImageSequenceClip(list(frames), fps=fps)
+    clip.write_videofile(output_path, codec="libx264")
