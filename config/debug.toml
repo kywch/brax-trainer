@@ -72,7 +72,7 @@ num_envs = { min = 256, max = 8192 }
 
 # These' scales are good for CARBS
 learning_rate = { min = 1e-5, max = 1e-1 }
-lr_decay_rate = { min = 1e-5, max = 1e-2 }
+lr_decay_rate = { min = 1e-5, max = 5e-2 }
 gamma = { min = 0.0, max = 1.0 }
 gae_lambda = { min = 0.0, max = 1.0 }
 update_epochs = { min = 1, max = 20 }
@@ -98,7 +98,7 @@ num_envs = { min = 8, max = 14, space = "linear", search_center = 11 }
 
 # Others: append min/max from wandb param to carbs param
 learning_rate = { space = "log", search_center = 2e-3 }
-lr_decay_rate = { space = "log", search_center = 1e-3 }
+lr_decay_rate = { space = "log", search_center = 5e-3 }
 gamma = { space = "logit", search_center = 0.97 }
 gae_lambda = { space = "logit", search_center = 0.90 }
 update_epochs = { space = "log", search_center = 5 }
