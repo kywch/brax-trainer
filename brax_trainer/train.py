@@ -47,7 +47,7 @@ def parse_args(config="config/debug.toml"):
         "-m",
         "--mode",
         type=str,
-        default="sweep",
+        default="train",
         choices="train sweep eval video check_sps cprofile".split(),
     )
 
@@ -56,8 +56,8 @@ def parse_args(config="config/debug.toml"):
         "-p",
         "--eval-model-path",
         type=str,
-        # default=None,
-        default="experiments/ant-48a31ec9/model_000046.pt",
+        default=None,
+        # default="checkpoints/brax_ant.pt",
     )
 
     # parser.add_argument(
@@ -129,6 +129,10 @@ def parse_args(config="config/debug.toml"):
 def args_to_session_spec(args):
     if args["seed"] is not None:
         args["train"]["seed"] = args["seed"]
+    elif args["train"].get("seed") is not None:
+        args["seed"] = args["train"]["seed"]
+    else:
+        args["train"]["seed"] = args["seed"] = random.randint(10_000_000, 99_999_999)
 
     args["env"].update(
         {
@@ -368,7 +372,7 @@ def record_video(args, rollout_steps=2000):
         # print(f"Next action: {action[0]}")
 
     # Save the video file to the model path
-    video_name = f"{model_path.split('.pt')[0]}_video.mp4"
+    video_name = f"{model_path.split('.pt')[0]}_video_seed_{args['seed']}_{time.strftime('%Y%m%d%H%M%S')}.mp4"
     create_video(frames, video_name, fps=30)
 
     # Get some basic stats on obs, to see if it needs some preprocessing

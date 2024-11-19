@@ -1,6 +1,7 @@
 # from pdb import set_trace as T
 import os
 import time
+import math
 import random
 import psutil
 
@@ -300,9 +301,8 @@ def train(data):
                 break
 
     with profile.train_misc:
-        if config.anneal_lr:
-            frac = 1.0 - data.global_step / config.total_timesteps
-            lrnow = frac * config.learning_rate
+        if config.lr_decay_rate is not None and config.lr_decay_rate > 0:
+            lrnow = config.learning_rate * math.exp(-config.lr_decay_rate * data.epoch)
             data.optimizer.param_groups[0]["lr"] = lrnow
 
         y_pred = experience.values_np

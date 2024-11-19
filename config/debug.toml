@@ -16,7 +16,7 @@ torch_deterministic = true
 cpu_offload = false
 device = "cuda"
 learning_rate = 3e-4
-anneal_lr = false
+lr_decay_rate = 1e-3
 gamma = 0.97
 gae_lambda = 0.95
 update_epochs = 4
@@ -63,7 +63,7 @@ name = "environment/episode_return"
 
 # NOTE: These are differently handled by CARBS
 # If the sampled params are out of range, the wandb sweep crashes
-total_timesteps = { min = 1_000_000, max = 100_000_000 }
+total_timesteps = { min = 1_000_000, max = 300_000_000 }
 batch_size = { min = 1, max = 2_000_000 }
 num_minibatches = { min = 1, max = 10000 }
 # minibatch_size = { min = 1, max = 2_000_000 }
@@ -72,6 +72,7 @@ num_envs = { min = 256, max = 8192 }
 
 # These' scales are good for CARBS
 learning_rate = { min = 1e-5, max = 1e-1 }
+lr_decay_rate = { min = 1e-5, max = 1e-2 }
 gamma = { min = 0.0, max = 1.0 }
 gae_lambda = { min = 0.0, max = 1.0 }
 update_epochs = { min = 1, max = 20 }
@@ -97,6 +98,7 @@ num_envs = { min = 8, max = 14, space = "linear", search_center = 11 }
 
 # Others: append min/max from wandb param to carbs param
 learning_rate = { space = "log", search_center = 2e-3 }
+lr_decay_rate = { space = "log", search_center = 1e-3 }
 gamma = { space = "logit", search_center = 0.97 }
 gae_lambda = { space = "logit", search_center = 0.90 }
 update_epochs = { space = "log", search_center = 5 }
