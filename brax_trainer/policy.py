@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 
 import pufferlib
-import pufferlib.frameworks.cleanrl
 from pufferlib.pytorch import layer_init
 
 
@@ -64,7 +63,7 @@ class RunningNorm(nn.Module):
 
 
 # TODO: test 128 width, with the lstm
-class CleanRLPolicy(pufferlib.frameworks.cleanrl.Policy):
+class CleanRLPolicy(pufferlib.cleanrl.Policy):
     def __init__(self, envs, hidden_size=64):
         super().__init__(policy=None)  # Just to get the right init
         self.is_continuous = True

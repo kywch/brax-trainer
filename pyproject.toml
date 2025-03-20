@@ -10,17 +10,17 @@ dependencies = [
     "brax",
     "jax[cuda12]",
     "gym==0.23",
-    "pufferlib@git+https://github.com/kywch/PufferLib.git",
-    "carbs@git+https://github.com/kywch/carbs.git",
+    "pufferlib==2.0.6",
+    "carbs@git+https://github.com/PufferAI/carbs.git",
     "moviepy",
 ]
-
-[system-requirements]
-cuda = "12.1"
 
 [tool.pixi.project]
 channels = ["pytorch", "nvidia", "conda-forge"]
 platforms = ["linux-64"]
+
+[tool.pixi.system-requirements]
+cuda = "12.1"
 
 [tool.pixi.pypi-dependencies]
 brax_trainer = { path = ".", editable = true }
@@ -31,9 +31,10 @@ ruff = ">=0.7.2,<0.8"
 cython = ">=3.0.11,<4"
 setuptools = ">=75.3.0,<76"
 wandb = ">=0.18.5,<0.19"
+psutil = "==5.9.5"
 
 pytorch = "*"
-pytorch-cuda = "12.1"
+pytorch-cuda = "==12.1"
 
 [tool.pixi.tasks]
 test_torch = "python -c 'import torch; print(torch.cuda.is_available())'"

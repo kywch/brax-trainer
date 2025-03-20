@@ -13,7 +13,7 @@ import numpy as np
 import pufferlib
 import pufferlib.utils
 import pufferlib.vector
-import pufferlib.frameworks.cleanrl
+import pufferlib.cleanrl
 
 from PIL import Image
 from tqdm import tqdm
@@ -57,7 +57,6 @@ def parse_args(config="config/debug.toml"):
         "--eval-model-path",
         type=str,
         default=None,
-        # default="checkpoints/brax_ant.pt",
     )
 
     # parser.add_argument(
@@ -166,7 +165,7 @@ def make_env_and_policy(session_spec):
     vecenv = pufferlib.vector.make(
         environment.make_vecenv,
         env_kwargs=session_spec["env_config"],
-        backend=pufferlib.vector.Native,
+        backend=pufferlib.vector.PufferEnv,
     )
 
     # Env compile & warm up
@@ -183,15 +182,15 @@ def make_env_and_policy(session_spec):
         rnn_cls = getattr(policy_module, policy_config["rnn_cls_name"])
 
     policy = policy_cls(vecenv.driver_env, **policy_config["policy_kwargs"])
-    if isinstance(policy, pufferlib.frameworks.cleanrl.Policy) or isinstance(
-        policy, pufferlib.frameworks.cleanrl.RecurrentPolicy
+    if isinstance(policy, pufferlib.cleanrl.Policy) or isinstance(
+        policy, pufferlib.cleanrl.RecurrentPolicy
     ):
         pass
     elif rnn_cls is not None:
         policy = rnn_cls(vecenv.driver_env, policy, **policy_config["rnn_kwargs"])
-        policy = pufferlib.frameworks.cleanrl.RecurrentPolicy(policy)
+        policy = pufferlib.cleanrl.RecurrentPolicy(policy)
     else:
-        policy = pufferlib.frameworks.cleanrl.Policy(policy)
+        policy = pufferlib.cleanrl.Policy(policy)
 
     if session_spec["state_dict"] is not None:
         policy.load_state_dict(session_spec["state_dict"])
@@ -373,7 +372,7 @@ def record_video(args, rollout_steps=2000):
 
     # Save the video file to the model path
     video_name = f"{model_path.split('.pt')[0]}_video_seed_{args['seed']}_{time.strftime('%Y%m%d%H%M%S')}.mp4"
-    create_video(frames, video_name, fps=30)
+    create_video(frames, video_name, fps=50)
 
     # Get some basic stats on obs, to see if it needs some preprocessing
     obs_mat = np.vstack(obs_list)
