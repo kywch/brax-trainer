@@ -4,6 +4,9 @@ requires = ["Cython>=3.0", "pip>=23.0", "setuptools>=61.0", "wheel", "numpy==1.2
 [project]
 description = "Pufferlib trainer for Brax"
 name = "brax-trainer"
+authors = [
+    { name = "Kyoung Whan Choe", email = "choe.kyoung@gmail.com" },
+]
 requires-python = ">=3.11,<3.12"
 version = "0.1.0"
 dependencies = [
