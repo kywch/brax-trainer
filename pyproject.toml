@@ -11,11 +11,12 @@ requires-python = ">=3.11,<3.12"
 version = "0.1.0"
 dependencies = [
     "brax",
-    "jax[cuda12]",
+    "jax[cuda12]==0.5.3",
+    "numpy<2",
     "gym==0.23",
     "pufferlib==2.0.6",
     "carbs@git+https://github.com/PufferAI/carbs.git",
-    "moviepy",
+    "moviepy==1.0.3",
 ]
 
 [tool.pixi.project]
